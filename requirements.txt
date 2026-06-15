@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+google-generativeai
+presidio-analyzer
+presidio-anonymizer
+spacy
+pydantic
+requests
+python-dotenv
