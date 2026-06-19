@@ -33,7 +33,7 @@ Bu proje, Kullanıcılar ile Büyük Dil Modelleri (LLM) arasında konumlanan, *
 1. Sanal ortamı başlatın: `python -m venv venv`
 2. Gereksinimleri yükleyin: `pip install -r requirements.txt`
 3. Dil modelini indirin  `python -m spacy download en_core_web_sm`
-4. Proje kök dizininde yer alan `.env.example` dosyasının adını `.env` olarak değiştirin. Ardından Gemini API anahtarınızı yapıştırın:
+4. Proje kök dizininde yer alan `.env.example` dosyasının adını `.env` olarak değiştirin. Ardından Gemini API anahtarınızı yapıştırın.
 5. Uygulamayı çalıştırın: `python -m uvicorn main:app --reload`
 6. `http://127.0.0.1:8000/docs` üzerinden Swagger arayüzüne erişin.
 7. Post isteği altında 'Try it out' basın ve örnek promtları execute edin.
@@ -44,6 +44,6 @@ Bu proje, Kullanıcılar ile Büyük Dil Modelleri (LLM) arasında konumlanan, *
 
 "My name is Furkan Erkan, I live in Istanbul and my phone number is 0555 123 44 55. What can you tell me about myself?"
 
-"Please send the confidential project report to furkan.erkan@company.com or call me at 0500 999 88 77."
+"Please send the confidential project report to deneme@deneme.com or call me at 0500 999 88 77."
 
 "My phone number is 0555 123 44 55. Remember this. Now, can you remind me what my phone number is?"
