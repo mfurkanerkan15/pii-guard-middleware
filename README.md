@@ -1,49 +1,99 @@
-## Zero-Trust LLM Veri Güvenliği Katmanı
+# 🛡️ Zero-Trust PII Guard Middleware for LLMs
 
-Bu proje, Kullanıcılar ile Büyük Dil Modelleri (LLM) arasında konumlanan, **"Veri Minimalizmi"** ve **"Sıfır Güven" (Zero-Trust)** prensipleriyle çalışan çift katmanlı bir siber güvenlik proxy/middleware yazılımıdır. Kullanıcı verilerinin yapay zeka modelleri tarafından "öğrenilmesini", bulut sunucularında depolanmasını ve model çıktılarından üçüncü şahıslara sızmasını (**Data Leakage / PII Exfiltration**) engeller.
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Presidio](https://img.shields.io/badge/Microsoft-Presidio-0078D4?style=flat&logo=microsoft)](https://github.com/microsoft/presidio)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-Pytest-green.svg)](https://docs.pytest.org/)
 
-## Öne Çıkan Özellikler
-
-- **Dinamik Giriş Güvenliği (Ingress Masking):** Kullanıcı girdisindeki hassas verileri (PII: İsim, Telefon, E-posta, Konum) Microsoft Presidio (NLP tabanlı Adlandırılmış Varlık Tanıma - NER) ile yapay zeka modeline gitmeden önce yakalar ve dinamik yer tutucularla (`PERSON_1`, `LOCATION_1`) maskeler.
-- **Gelişmiş Durum Yönetimi (State Mapping):** Metin içindeki mükerrer hassas verileri hafıza haritasında eşleştirerek tutarlı etiketleme sağlar ve karakter kaymalarını (index shifting) önlemek için çift yönlü sıralama algoritması kullanır.
-- **DLP Guard ile Çıkış Güvenliği (Egress Inspection):** Modelin ürettiği yanıtları kullanıcıya ulaşmadan önce denetler. Modelin prompt injection saldırılarıyla kırılması veya halüsinasyon görmesi durumunda, orijinal hassas verileri dışarı sızdırma girişimlerini anlık olarak tespit edip isteği bloklar.
-- **Kıyaslamalı Akış Raporu:** Her istek sonucunda verinin orijinal halini, maskelenmiş halini, modelin ham cevabını ve unmasked halini gösteren şeffaf bir denetim raporu üretir.
-- **Güvenlik Günlüğü (Audit Logging):** Tüm maskeleme ve proxy hareketlerini `logs/security_audit.log` dosyasında kriptik denetim izleri olarak saklar.
+A dual-layer, high-reliability security proxy positioned between client applications and Large Language Models (LLMs). Operating under **Zero-Trust** and **Data Minimization** principles, it prevents enterprise data leakage, stops PII exfiltration, and intercepts prompt-injection extraction attempts in real time.
 
 ---
 
-## Çalışma Mimarisi (Data Flow)
+## 🏗️ Architecture & Data Pipeline
 
-1. **User Prompt** ➡️ `Muhammed Furkan Erkan, İstanbul'da yaşıyor.`
-2. **Ingress (Presidio NER)** ➡️ PII tespiti ve dinamik mapping oluşturulması.
-3. **LLM Payload** ➡️ `PERSON_1, LOCATION_1'da yaşıyor.` (Modele giden güvenli metin)
-4. **LLM Response Evaluation** ➡️ Model çıktısı `dlp_guard` tarafından taranır. Sızıntı yoksa onaylanır.
-5. **Egress (Unmasking)** ➡️ `PERSON_1` -> `Muhammed Furkan Erkan` değişimi yapılarak kullanıcıya temiz çıktı dönülür.
+The proxy intercepts requests at both **Ingress (Pre-LLM)** and **Egress (Post-LLM)** phases, ensuring unencrypted sensitive entities never leave the application boundary.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Client / User
+    participant Proxy as PII Guard Middleware
+    participant NER as Presidio Engine (spaCy)
+    participant State as State Mapping Buffer
+    participant LLM as External LLM (Gemini)
+    participant DLP as Egress DLP Inspector
+
+    User->>Proxy: Raw Prompt (Contains PII)
+    Proxy->>NER: Extract Entities (Name, Phone, Email, Location)
+    NER-->>Proxy: Detected Entities & Spans
+    Proxy->>State: Store Original Values <-> Dynamic Placeholders
+    Proxy->>LLM: Anonymized Payload (e.g., PERSON_1, LOCATION_1)
+    LLM-->>Proxy: Raw Generated Response
+    Proxy->>DLP: Inspect for Leaks & Injection Exfiltration
+    alt Leak / Anomaly Detected
+        DLP-->>User: 403 Forbidden / Security Alert Logged
+    else Payload Cleared
+        Proxy->>State: Rehydrate Placeholders (Unmasking)
+        Proxy-->>User: Sanitized & Restored Final Response
+    end
+```
 
 ---
 
-## Kurulum ve Çalıştırma
+## ⚡ Core Engineering Features
 
-## Gereksinimler
-- Python 3.10+
-- Gemini API Anahtarı
-
-## Adımlar
-
-1. Sanal ortamı başlatın: `python -m venv venv`
-2. Gereksinimleri yükleyin: `pip install -r requirements.txt`
-3. Dil modelini indirin  `python -m spacy download en_core_web_sm`
-4. Proje kök dizininde yer alan `.env.example` dosyasının adını `.env` olarak değiştirin. Ardından Gemini API anahtarınızı yapıştırın.
-5. Uygulamayı çalıştırın: `python -m uvicorn main:app --reload`
-6. `http://127.0.0.1:8000/docs` üzerinden Swagger arayüzüne erişin.
-7. Post isteği altında 'Try it out' basın ve örnek promtları execute edin.
+* 🔒 **Dynamic Ingress Anonymization:** Uses Microsoft Presidio and spaCy NER engines to detect sensitive entities (Names, Phone Numbers, Emails, Locations) and map them to dynamic tokens (`<PERSON_1>`, `<EMAIL_ADDRESS_1>`).
+* 🧠 **Stateful Bi-Directional Mapping:** Resolves index-shifting issues via structured reverse sorting, ensuring deterministic restoration across complex prompt structures.
+* 🚨 **Post-Inference DLP Inspection:** Inspects model completions before delivery. If prompt injection or model hallucination leaks sensitive context, the request is intercepted.
+* 📜 **Security Audit Logging:** Cryptic audit traces and latency telemetry are recorded in `logs/security_audit.log` for SIEM integration.
 
 ---
 
-## Örnekler
+## 🛠️ Tech Stack
 
-"My name is Furkan Erkan, I live in Istanbul and my phone number is 0555 123 44 55. What can you tell me about myself?"
+* **Runtime:** Python 3.10+
+* **Framework:** FastAPI, Uvicorn, Pydantic
+* **NLP & Privacy Engines:** Microsoft Presidio Analyzer & Anonymizer, spaCy
+* **Integration:** Google Gemini API
+* **Quality Assurance:** Pytest
 
-"Please send the confidential project report to deneme@deneme.com or call me at 0500 999 88 77."
+---
 
-"My phone number is 0555 123 44 55. Remember this. Now, can you remind me what my phone number is?"
+## 🚀 Quickstart & Local Setup
+
+### 1. Clone & Dependencies
+```bash
+git clone https://github.com/mfurkanerkan15/pii-guard-middleware.git
+cd pii-guard-middleware
+
+python -m venv venv
+.\venv\Scripts\activate  # On Linux/macOS: source venv/bin/activate
+pip install -r requirements.txt
+python -m spacy download en_core_web_lg
+```
+
+### 2. Environment Variables
+Copy `.env.example` to `.env` and set your credentials:
+```bash
+cp .env.example .env
+```
+Inside `.env`:
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+### 3. Run the Middleware
+```bash
+python -m uvicorn main:app --reload
+```
+Interactive API docs: **`[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)`**
+
+---
+
+## 🧪 Automated Testing
+
+Run the integration and unit test suite:
+```bash
+pytest -v
+```
