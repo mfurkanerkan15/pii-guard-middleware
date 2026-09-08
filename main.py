@@ -50,7 +50,6 @@ async def handle_request(user_input: str = Body(..., media_type="text/plain")):
         final_clean_response = final_clean_response.replace(placeholder, original_value)
     
     # 5. KARŞILAŞTIRMALI VE ADAMAKILLI METİN FORMATI
-    # Tüm adımları görsel bir şablon haline getirip ekrana basıyoruz
     report = (
         "======================================================================\n"
         "                  ZERO-TRUST LLM VERİ GÜVENLİĞİ KATMANI             \n"

@@ -2,6 +2,7 @@ import logging
 import os
 from presidio_analyzer import AnalyzerEngine
 
+
 if not os.path.exists('logs'):
     os.makedirs('logs')
 
@@ -24,7 +25,7 @@ def process_and_mask_dynamic(text: str, request_id: str):
     
     mapping = {}
     counters = {}
-    value_to_placeholder = {} # Aynı kelimeye hep aynı etiketi vermek için
+    value_to_placeholder = {} 
 
     for res in forward_results:
         original_value = text[res.start:res.end]
@@ -50,7 +51,5 @@ def process_and_mask_dynamic(text: str, request_id: str):
         masked_text = masked_text[:start] + placeholder + masked_text[end:]
 
     logging.info(f"{request_id} | Masked: {masked_text}")
-    
-    #logging.info(f"{request_id} - Original: {text} | Masked: {masked_text} | Mapping: {mapping}")
     
     return masked_text, mapping
