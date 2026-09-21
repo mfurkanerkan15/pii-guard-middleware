@@ -30,3 +30,13 @@ def test_no_pii_intact():
     # PII yoksa metin bozulmamalı ve harita boş dönmeli
     assert masked_text == sample_text
     assert len(mapping) == 0
+
+def test_pre_existing_placeholder_not_remasked():
+    """Kullanıcı prompt'u içinde önceden PERSON_1 gibi etiketler varsa bunlar tekrar maskelenmemeli."""
+    sample_text = "Hello, my name is Furkan Erkan. Please do not use PERSON_1 in your answer."
+    masked_text, mapping = process_and_mask_dynamic(sample_text, request_id="TEST_003")
+    
+    # PERSON_1 etiketi yeni bir entity gibi tekrar maskelenmemeli
+    assert "Furkan Erkan" not in masked_text
+    assert mapping.get("PERSON_1") == "Furkan Erkan"
+    assert "PERSON_1" not in mapping.values()

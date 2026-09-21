@@ -1,80 +1,102 @@
-# 🛡️ Zero-Trust PII Guard Middleware for LLMs
+# PII Guard Middleware for LLMs
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Presidio](https://img.shields.io/badge/Microsoft-Presidio-0078D4?style=flat&logo=microsoft)](https://github.com/microsoft/presidio)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-Pytest-green.svg)](https://docs.pytest.org/)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-26%20Passed-green.svg)](https://docs.pytest.org/)
 
-A dual-layer, high-reliability security proxy positioned between client applications and Large Language Models (LLMs). Operating under **Zero-Trust** and **Data Minimization** principles, it prevents enterprise data leakage, stops PII exfiltration, and intercepts prompt-injection extraction attempts in real time.
+An HTTP proxy middleware built with FastAPI and Microsoft Presidio to implement data minimization for Large Language Model (LLM) integrations. The system anonymizes sensitive Personally Identifiable Information (PII) before external transmission, applies multi-layer heuristic checks on the model's response to detect inadvertent data leakage, and restores original values for the client.
 
 ---
 
-## 🏗️ Architecture & Data Pipeline
+## 🏗️ Architecture & Pipeline Flow
 
-The proxy intercepts requests at both **Ingress (Pre-LLM)** and **Egress (Post-LLM)** phases, ensuring unencrypted sensitive entities never leave the application boundary.
+The proxy intercepts traffic at two points in the request lifecycle: **Ingress (Pre-LLM)** and **Egress (Post-LLM)**.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Client / User
-    participant Proxy as PII Guard Middleware
-    participant NER as Presidio Engine (spaCy)
-    participant State as State Mapping Buffer
-    participant LLM as External LLM (Gemini)
+    actor Client as Client / User
+    participant Proxy as FastAPI Middleware
+    participant NER as Presidio Engine (spaCy en_core_web_lg)
+    participant Buffer as Ephemeral State Mapping
+    participant LLM as External LLM (Gemini API)
     participant DLP as Egress DLP Inspector
 
-    User->>Proxy: Raw Prompt (Contains PII)
-    Proxy->>NER: Extract Entities (Name, Phone, Email, Location)
-    NER-->>Proxy: Detected Entities & Spans
-    Proxy->>State: Store Original Values <-> Dynamic Placeholders
-    Proxy->>LLM: Anonymized Payload (e.g., PERSON_1, LOCATION_1)
-    LLM-->>Proxy: Raw Generated Response
-    Proxy->>DLP: Inspect for Leaks & Injection Exfiltration
-    alt Leak / Anomaly Detected
-        DLP-->>User: 403 Forbidden / Security Alert Logged
-    else Payload Cleared
-        Proxy->>State: Rehydrate Placeholders (Unmasking)
-        Proxy-->>User: Sanitized & Restored Final Response
+    Client->>Proxy: 1. POST /process (Raw Prompt with PII)
+    Proxy->>NER: 2. Extract Entities (PERSON, PHONE, EMAIL, LOCATION)
+    NER-->>Proxy: Detected Spans & Entity Types
+    Proxy->>Buffer: 3. Create Mapping (e.g., PERSON_1 -> "Ahmet Yılmaz")
+    Proxy->>Proxy: 4. Apply Reverse-Sorted Span Masking
+    Proxy->>LLM: 5. Transmit Anonymized Prompt
+    LLM-->>Proxy: 6. Raw Model Output
+    Proxy->>DLP: 7. Multi-Layer Heuristic Leak Inspection
+    alt Leak Detected (Original PII in Output)
+        DLP-->>Client: 403 / Security Alert (Request Intercepted)
+    else Cleared (No PII Leakage)
+        Proxy->>Buffer: 8. Rehydrate Placeholders (Reverse Mapping)
+        Proxy-->>Client: 9. Sanitized & Restored Final Response
     end
 ```
 
 ---
 
-## ⚡ Core Engineering Features
+## ⚙️ Engineering Implementation Details
 
-* 🔒 **Dynamic Ingress Anonymization:** Uses Microsoft Presidio and spaCy NER engines to detect sensitive entities (Names, Phone Numbers, Emails, Locations) and map them to dynamic tokens (`<PERSON_1>`, `<EMAIL_ADDRESS_1>`).
-* 🧠 **Stateful Bi-Directional Mapping:** Resolves index-shifting issues via structured reverse sorting, ensuring deterministic restoration across complex prompt structures.
-* 🚨 **Post-Inference DLP Inspection:** Inspects model completions before delivery. If prompt injection or model hallucination leaks sensitive context, the request is intercepted.
-* 📜 **Security Audit Logging:** Cryptic audit traces and latency telemetry are recorded in `logs/security_audit.log` for SIEM integration.
+### 1. Ingress Anonymization (`processor.py`)
+* **Entity Extraction:** Integrates `presidio-analyzer` backed by spaCy's `en_core_web_lg` model (`language='en'`). Configured to extract `PERSON`, `PHONE_NUMBER`, `EMAIL_ADDRESS`, and `LOCATION` entities.
+* **Deterministic Index Replacement:** Multi-entity replacements introduce character offset shifts. To prevent index corruptions, entity spans are sorted in reverse order (`sorted(results, key=lambda x: x.start, reverse=True)`) before string reconstruction.
+* **State Mapping:** Retains a temporary bidirectional dictionary (`{"PERSON_1": "Original Name"}`) scoped to the request execution context.
+
+### 2. Egress DLP Inspection (`dlp_guard.py`)
+Model completions are evaluated through a layered heuristic filter prior to rehydration:
+
+* **Case-Insensitive Matching:** Normalizes character casing to detect case-altered PII reflections (e.g., `Ahmet Yılmaz` $\leftrightarrow$ `ahmet yılmaz`).
+* **Delimiter & Obfuscation Stripping:** Removes whitespace and punctuation delimiters (`[\W_]+`) to detect separated token patterns (e.g., `F-u-r-k-a-n`, `A h m e t`).
+* **Numeric Normalization:** Normalizes non-digit characters (`\D`) in phone numbers and numeric strings to match across local and international formatting (`+90 555 123 4567` $\leftrightarrow$ `05551234567`).
+* **Token-Level Compound Name Heuristics:** Evaluates individual sub-tokens of multi-word names ($\ge 4$ characters) using `\b` word boundaries to catch partial name leaks while avoiding substring collisions (e.g., matching `"Ali"` will not flag `"Kalite"`).
+* **Telemetry Logging:** Presidio scans generated text for general world entities (e.g., "Paris", "Albert Einstein"). Unmatched entities are logged as telemetry (`INFO`) without triggering false-positive request blocks.
+
+---
+
+## ⚠️ Scope & Known Technical Limitations
+
+* **Language Model Scope:** Entity recognition relies on spaCy's `en_core_web_lg` model (`language='en'`). Recognition accuracy on non-English text or localized identifiers (e.g., Turkish TCKN, regional tax IDs) requires custom Presidio `PatternRecognizer` definitions.
+* **State Storage:** Mapping buffers are currently stored in-memory per request lifecycle. Distributed, multi-worker architectures would require an external key-value store (e.g., Redis) with TTL expiration.
+* **Heuristic Boundaries:** Token-level name matching applies a length threshold ($\ge 4$ chars) to reduce collision rates with common vocabulary words.
 
 ---
 
 ## 🛠️ Tech Stack
 
-* **Runtime:** Python 3.10+
-* **Framework:** FastAPI, Uvicorn, Pydantic
-* **NLP & Privacy Engines:** Microsoft Presidio Analyzer & Anonymizer, spaCy
-* **Integration:** Google Gemini API
-* **Quality Assurance:** Pytest
+* **Language:** Python 3.10+
+* **Web Framework:** FastAPI, Uvicorn
+* **Privacy & NLP:** Microsoft Presidio Analyzer (`presidio-analyzer`), spaCy (`en_core_web_lg`)
+* **LLM Client:** Google Generative AI SDK (`google-generativeai`)
+* **Testing:** Pytest
 
 ---
 
 ## 🚀 Quickstart & Local Setup
 
-### 1. Clone & Dependencies
+### 1. Clone & Environment Setup
 ```bash
 git clone https://github.com/mfurkanerkan15/pii-guard-middleware.git
 cd pii-guard-middleware
 
 python -m venv venv
-.\venv\Scripts\activate  # On Linux/macOS: source venv/bin/activate
+# On Windows:
+.\venv\Scripts\activate
+# On Linux/macOS:
+# source venv/bin/activate
+
 pip install -r requirements.txt
 python -m spacy download en_core_web_lg
 ```
 
-### 2. Environment Variables
-Copy `.env.example` to `.env` and set your credentials:
+### 2. Configuration
+Copy `.env.example` to `.env` and provide your Gemini API key:
 ```bash
 cp .env.example .env
 ```
@@ -83,17 +105,27 @@ Inside `.env`:
 GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
-### 3. Run the Middleware
+### 3. Run the Server
 ```bash
 python -m uvicorn main:app --reload
 ```
-Interactive API docs: **`[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)`**
+API Documentation: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
 ---
 
 ## 🧪 Automated Testing
 
-Run the integration and unit test suite:
+The test suite contains 28 automated tests covering pipeline stages, heuristic leak filters, and edge cases:
+
 ```bash
 pytest -v
 ```
+
+### Test Coverage Overview:
+* **Ingress Anonymization & Rehydration:** Validates complete masking-unmasking roundtrip and non-PII pass-through.
+* **Case Normalization:** Tests lowercase, uppercase, and mixed-case leakage vectors.
+* **Obfuscation Detection:** Tests hyphen, whitespace, dot, and underscore token separation tricks.
+* **Numeric & Phone Variations:** Tests international prefix variations, unformatted digits, and hyphenated forms.
+* **Token-Level Name Matching:** Tests first-name, middle-name, and surname partial leakage.
+* **False-Positive Handling:** Asserts that general world entities (Paris, Einstein) and word substrings ("Kalite" $\neq$ "Ali") are not blocked.
+* **Edge Cases & Stress:** Tests JSON-escaped payloads, regex special characters in names, empty buffers, and high-volume text (10,000+ characters).

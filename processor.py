@@ -1,3 +1,4 @@
+import re
 import logging
 import os
 from presidio_analyzer import AnalyzerEngine
@@ -13,15 +14,22 @@ logging.basicConfig(
 )
 
 analyzer = AnalyzerEngine()
+PLACEHOLDER_PATTERN = re.compile(r"^(PERSON|LOCATION|PHONE_NUMBER|EMAIL_ADDRESS)_\d+$")
 
-def process_and_mask_dynamic(text: str, request_id: str):
+def process_and_mask_dynamic(text: str, request_id: str = "N/A"):
     results = analyzer.analyze(
         text=text, 
         entities=["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "LOCATION"], 
         language='en'
     )
 
-    forward_results = sorted(results, key=lambda x: x.start)
+    # Prompt içinde önceden yer alan placeholder etiketlerini (PERSON_1 vb.) filtrele
+    valid_results = [
+        res for res in results 
+        if not PLACEHOLDER_PATTERN.match(text[res.start:res.end].strip())
+    ]
+
+    forward_results = sorted(valid_results, key=lambda x: x.start)
     
     mapping = {}
     counters = {}
@@ -36,7 +44,7 @@ def process_and_mask_dynamic(text: str, request_id: str):
             placeholder = f"{entity_type}_{counters[entity_type]}"
             value_to_placeholder[original_value] = placeholder
 
-    sorted_results = sorted(results, key=lambda x: x.start, reverse=True)
+    sorted_results = sorted(valid_results, key=lambda x: x.start, reverse=True)
     masked_text = text
 
     for res in sorted_results:
@@ -52,4 +60,4 @@ def process_and_mask_dynamic(text: str, request_id: str):
 
     logging.info(f"{request_id} | Masked: {masked_text}")
     
-    return masked_text, mapping
+    return masked_text, mapping

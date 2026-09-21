@@ -41,7 +41,7 @@ async def handle_request(user_input: str = Body(..., media_type="text/plain")):
     llm_text = response.text
     
     # 3. Çıkış Güvenliği
-    if check_for_leaks(llm_text, mapping):
+    if check_for_leaks(llm_text, mapping, request_id):
         return "Blocked: Güvenlik İhlali: Model çıktısında maskelenmemiş ham hassas veri saptandı!"
     
     # 4. Geri Çözme (Unmasking)
