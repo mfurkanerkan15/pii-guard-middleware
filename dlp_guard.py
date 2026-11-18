@@ -1,10 +1,31 @@
 import re
 import logging
+import unicodedata
 from processor import analyzer
 
+def fold_text(text: str) -> str:
+    """
+    Unicode (NFKC) normalizasyonu, Türkçe büyük harf ön eşlemesi (İ->i, I->ı),
+    casefold() ve Türkçe karakter katlama (ı->i, ş->s, ğ->g, ü->u, ö->o, ç->c)
+    uygular.
+    """
+    if not text:
+        return ""
+    text = unicodedata.normalize("NFKC", text)
+    text = text.translate(str.maketrans({"İ": "i", "I": "ı"}))
+    text = text.casefold()
+    return text.translate(str.maketrans({
+        "ı": "i",
+        "ş": "s",
+        "ğ": "g",
+        "ü": "u",
+        "ö": "o",
+        "ç": "c"
+    }))
+
 def _normalize_text(text: str) -> str:
-    """Metni küçük harfe çevirir ve ardışık boşlukları tek boşluğa indirger."""
-    return re.sub(r'\s+', ' ', text.lower()).strip()
+    """Metni Türkçe ve Unicode uyumlu katlar ve ardışık boşlukları tek boşluğa indirger."""
+    return re.sub(r'\s+', ' ', fold_text(text)).strip()
 
 def _extract_digits(text: str) -> str:
     """Metindeki yalnızca rakamları çeker."""
@@ -12,7 +33,22 @@ def _extract_digits(text: str) -> str:
 
 def _strip_separators(text: str) -> str:
     """Tüm boşluk ve noktalama işaretlerini kaldırarak sadece harf ve rakamları bırakır."""
-    return re.sub(r'[\W_]+', '', text.lower(), flags=re.UNICODE)
+    return re.sub(r'[\W_]+', '', fold_text(text), flags=re.UNICODE)
+
+def _extract_phone_chunks(text: str) -> list[str]:
+    """
+    Metindeki telefon veya sayı dizisi öbeklerini (boşluk, tire, nokta, parantez veya + ile ayrılmış)
+    ayıklar ve her bir öbeğin yalnızca rakamlarını döner.
+    En az 7 haneli rakam gruplarını filtreleyerek metne dağılmış bağımsız sayıların
+    yanlış alarm üretmesini engeller.
+    """
+    raw_chunks = re.findall(r'(?:\+?\d[\d\s\-\.\(\)/]{5,}\d|\b\d{7,}\b)', text)
+    cleaned_chunks = []
+    for c in raw_chunks:
+        digits = re.sub(r'\D', '', c)
+        if len(digits) >= 7:
+            cleaned_chunks.append(digits)
+    return cleaned_chunks
 
 def check_for_leaks(
     text: str, 
@@ -26,7 +62,7 @@ def check_for_leaks(
     sızıp sızmadığını çok katmanlı normalizasyon ve regex ile denetler.
 
     Katmanlar:
-    1. Case-Insensitive Doğrudan Eşleşme (Ahmet Yılmaz <-> ahmet yılmaz)
+    1. Case-Insensitive & Türkçe Uyumlu Doğrudan Eşleşme (Ahmet Yılmaz <-> ahmet yılmaz)
     2. Obfuscation / Ayrıştırma Engelleme (A-h-m-e-t, F u r k a n)
     3. Sayısal / Telefon Format Normalizasyonu (+90 555 123 4567 <-> 05551234567)
     4. Kısmi / Token-Level İsim Tespiti ("Ahmet Furkan Yılmaz" -> "Furkan Yılmaz")
@@ -37,7 +73,7 @@ def check_for_leaks(
 
     text_norm = _normalize_text(text)
     text_clean = _strip_separators(text)
-    text_digits = _extract_digits(text)
+    phone_chunks = _extract_phone_chunks(text)
 
     PLACEHOLDER_REGEX = re.compile(r"^(PERSON|LOCATION|PHONE_NUMBER|EMAIL_ADDRESS)_\d+$")
 
@@ -56,36 +92,40 @@ def check_for_leaks(
         # 1. Katman: Doğrudan & Büyük/Küçük Harf (Case-Insensitive) Eşleşmesi
         if val_norm in text_norm:
             logging.warning(
-                f"{request_id} | SIZINTI TESPİT EDİLDİ (Doğrudan Eşleşme): '{raw_val}' ({placeholder})"
+                f"{request_id} | SIZINTI TESPİT EDİLDİ (Katman 1 - Doğrudan Eşleşme) | Placeholder: {placeholder}"
             )
             return True
 
         # 2. Katman: Obfuscation / Noktalama & Boşluk Ayırma Engelleme (Ör: A-h-m-e-t, F u r k a n)
         if len(val_clean) >= 4 and val_clean in text_clean:
             logging.warning(
-                f"{request_id} | SIZINTI TESPİT EDİLDİ (Karakter/Boşluk Ayrıştırma): '{raw_val}' ({placeholder})"
+                f"{request_id} | SIZINTI TESPİT EDİLDİ (Katman 2 - Obfuscation / Ayrıştırma) | Placeholder: {placeholder}"
             )
             return True
 
         # 3. Katman: Sayısal / Telefon / Kimlik Format Normalizasyonu (Ör: +90 555 123 4567 -> 5551234567)
         if len(val_digits) >= 7:
             core_digits = val_digits[-10:] if len(val_digits) >= 10 else val_digits
-            if core_digits in text_digits or val_digits in text_digits:
-                logging.warning(
-                    f"{request_id} | SIZINTI TESPİT EDİLDİ (Sayısal/Telefon Formatı): '{raw_val}' ({placeholder})"
-                )
-                return True
+            for chunk_digits in phone_chunks:
+                chunk_core = chunk_digits[-10:] if len(chunk_digits) >= 10 else chunk_digits
+                if (core_digits in chunk_digits or 
+                    val_digits in chunk_digits or 
+                    (len(chunk_core) >= 10 and chunk_core in val_digits) or
+                    chunk_digits == core_digits):
+                    logging.warning(
+                        f"{request_id} | SIZINTI TESPİT EDİLDİ (Katman 3 - Sayısal / Telefon Formatı) | Placeholder: {placeholder}"
+                    )
+                    return True
 
         # 4. Katman: Kelime Bazlı / Parçalı İsim Tespiti (Yalnızca PERSON varlıkları için)
-        # Ör: "Ahmet Furkan Yılmaz" -> "Furkan" veya "Yılmaz" (LOCATION vb. varlıklardaki genel kelimeleri ayırmaz)
         if placeholder.startswith("PERSON"):
             tokens = [t for t in re.split(r'\s+', val_norm) if len(t) >= token_min_len]
             if len(re.split(r'\s+', val_norm)) > 1:
                 for token in tokens:
                     pattern = rf"\b{re.escape(token)}\b"
-                    if re.search(pattern, text_norm, re.IGNORECASE):
+                    if re.search(pattern, text_norm):
                         logging.warning(
-                            f"{request_id} | SIZINTI TESPİT EDİLDİ (Kısmi İsim Sızıntısı): '{token}' in '{raw_val}' ({placeholder})"
+                            f"{request_id} | SIZINTI TESPİT EDİLDİ (Katman 4 - Kısmi İsim Sızıntısı) | Placeholder: {placeholder}"
                         )
                         return True
 
@@ -106,9 +146,9 @@ def check_for_leaks(
                 continue
                 
             logging.info(
-                f"{request_id} | Model çıktısında harici varlık gözlendi (sızıntı değil): '{found_value}' ({res.entity_type})"
+                f"{request_id} | Model çıktısında harici varlık gözlendi (Katman 5 - Telemetri) | Tip: {res.entity_type}"
             )
     except Exception as e:
-        logging.error(f"{request_id} | DLP analiz sırasında hata oluştu: {e}")
+        logging.error(f"{request_id} | DLP analiz sırasında hata oluştu: {type(e).__name__}")
 
-    return False
+    return False

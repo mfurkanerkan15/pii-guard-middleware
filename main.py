@@ -1,9 +1,10 @@
 import os
+import uuid
 import google.generativeai as genai
 from dotenv import load_dotenv
-from fastapi import FastAPI, Body
+from fastapi import FastAPI, Body, HTTPException
 from fastapi.responses import PlainTextResponse
-from processor import process_and_mask_dynamic
+from processor import process_and_mask_dynamic, rehydrate_text
 from dlp_guard import check_for_leaks
 
 
@@ -20,7 +21,7 @@ app = FastAPI(title="Zero-Trust LLM Veri Güvenliği Katmanı")
 
 @app.post("/process", response_class=PlainTextResponse)
 async def handle_request(user_input: str = Body(..., media_type="text/plain")):
-    request_id = "req_123"
+    request_id = str(uuid.uuid4())
 
     # 1. Giriş Güvenliği: Dinamik Maskeleme yapılıyor
     masked_text, mapping = process_and_mask_dynamic(user_input, request_id)
@@ -42,14 +43,15 @@ async def handle_request(user_input: str = Body(..., media_type="text/plain")):
     
     # 3. Çıkış Güvenliği
     if check_for_leaks(llm_text, mapping, request_id):
-        return "Blocked: Güvenlik İhlali: Model çıktısında maskelenmemiş ham hassas veri saptandı!"
+        raise HTTPException(
+            status_code=403,
+            detail="Blocked: Güvenlik İhlali: Model çıktısında maskelenmemiş ham hassas veri saptandı!"
+        )
     
-    # 4. Geri Çözme (Unmasking)
-    final_clean_response = llm_text
-    for placeholder, original_value in mapping.items():
-        final_clean_response = final_clean_response.replace(placeholder, original_value)
+    # 4. Geri Çözme (Unmasking / Rehydration)
+    final_clean_response = rehydrate_text(llm_text, mapping)
     
-    # 5. KARŞILAŞTIRMALI VE ADAMAKILLI METİN FORMATI
+    # 5. KARŞILAŞTIRMALI VE METİN FORMATI
     report = (
         "======================================================================\n"
         "                  ZERO-TRUST LLM VERİ GÜVENLİĞİ KATMANI             \n"

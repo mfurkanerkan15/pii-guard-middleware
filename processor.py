@@ -58,6 +58,21 @@ def process_and_mask_dynamic(text: str, request_id: str = "N/A"):
         # Maskeleme
         masked_text = masked_text[:start] + placeholder + masked_text[end:]
 
-    logging.info(f"{request_id} | Masked: {masked_text}")
+    entity_types = sorted(list(set(res.entity_type for res in valid_results)))
+    logging.info(f"{request_id} | Giriş maskeleme tamamlandı | Varlık Sayısı: {len(valid_results)} | Tipler: {entity_types}")
     
-    return masked_text, mapping
+    return masked_text, mapping
+
+
+def rehydrate_text(text: str, mapping: dict) -> str:
+    """
+    LLM çıktısındaki placeholder etiketlerini orijinal hassas verilerle geri değiştirir.
+    Prefix çakışmalarını (örn. PERSON_10'un PERSON_1 tarafından kısmen bozulmasını)
+    engellemek için regex word boundary ve uzunluğa göre azalan sıralama kullanır.
+    """
+    if not text or not mapping:
+        return text
+
+    sorted_placeholders = sorted(mapping.keys(), key=len, reverse=True)
+    pattern = re.compile(r'\b(' + '|'.join(re.escape(p) for p in sorted_placeholders) + r')\b')
+    return pattern.sub(lambda m: mapping.get(m.group(0), m.group(0)), text)
