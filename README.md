@@ -4,7 +4,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Presidio](https://img.shields.io/badge/Microsoft-Presidio-0078D4?style=flat&logo=microsoft)](https://github.com/microsoft/presidio)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-26%20Passed-green.svg)](https://docs.pytest.org/)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-43%20Passed-green.svg)](https://docs.pytest.org/)
 
 An HTTP proxy middleware built with FastAPI and Microsoft Presidio to implement data minimization for Large Language Model (LLM) integrations. The system anonymizes sensitive Personally Identifiable Information (PII) before external transmission, applies multi-layer heuristic checks on the model's response to detect inadvertent data leakage, and restores original values for the client.
 
@@ -52,9 +52,9 @@ sequenceDiagram
 ### 2. Egress DLP Inspection (`dlp_guard.py`)
 Model completions are evaluated through a layered heuristic filter prior to rehydration:
 
-* **Case-Insensitive Matching:** Normalizes character casing to detect case-altered PII reflections (e.g., `Ahmet Yılmaz` $\leftrightarrow$ `ahmet yılmaz`).
+* **Case-Insensitive Matching:** Normalizes Unicode (NFKC) and character casing including Turkish letter variations (e.g., `Ahmet Yılmaz` $\leftrightarrow$ `ahmet yılmaz`, `İSMAİL` $\leftrightarrow$ `ismail`).
 * **Delimiter & Obfuscation Stripping:** Removes whitespace and punctuation delimiters (`[\W_]+`) to detect separated token patterns (e.g., `F-u-r-k-a-n`, `A h m e t`).
-* **Numeric Normalization:** Normalizes non-digit characters (`\D`) in phone numbers and numeric strings to match across local and international formatting (`+90 555 123 4567` $\leftrightarrow$ `05551234567`).
+* **Numeric & Phone Chunk Normalization:** Extracts contiguous digit chunks ($\ge 7$ digits) and normalizes non-digit characters (`\D`) to match across local and international formatting (`+90 555 123 4567` $\leftrightarrow$ `05551234567`) while preventing false alarms from scattered numbers.
 * **Token-Level Compound Name Heuristics:** Evaluates individual sub-tokens of multi-word names ($\ge 4$ characters) using `\b` word boundaries to catch partial name leaks while avoiding substring collisions (e.g., matching `"Ali"` will not flag `"Kalite"`).
 * **Telemetry Logging:** Presidio scans generated text for general world entities (e.g., "Paris", "Albert Einstein"). Unmatched entities are logged as telemetry (`INFO`) without triggering false-positive request blocks.
 
@@ -115,7 +115,7 @@ API Documentation: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
 ## 🧪 Automated Testing
 
-The test suite contains 28 automated tests covering pipeline stages, heuristic leak filters, and edge cases:
+The test suite contains 43 automated tests covering pipeline stages, heuristic leak filters, API responses, and edge cases:
 
 ```bash
 pytest -v
