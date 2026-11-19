@@ -15,11 +15,9 @@ def fold_text(text: str) -> str:
     if not text:
         return ""
     text = unicodedata.normalize("NFKC", text)
-    text = text.translate(str.maketrans({"İ": "i", "I": "ı"}))
+    text = text.translate(str.maketrans("İI", "iı"))
     text = text.casefold()
-    return text.translate(
-        str.maketrans({"ı": "i", "ş": "s", "ğ": "g", "ü": "u", "ö": "o", "ç": "c"})
-    )
+    return text.translate(str.maketrans("ışğüöç", "isguoc"))
 
 
 def _normalize_text(text: str) -> str:

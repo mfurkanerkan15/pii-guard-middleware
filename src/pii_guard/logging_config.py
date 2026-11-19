@@ -4,6 +4,10 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pii_guard.config import Settings
 
 
 class JSONFormatter(logging.Formatter):
@@ -19,7 +23,7 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_entry, ensure_ascii=False)
 
 
-def configure_logging(settings) -> None:
+def configure_logging(settings: "Settings") -> None:
     """Uygulama başlangıcında çağrılır. Log dizinini oluşturur ve JSON handler ekler."""
     log_dir = settings.log_dir
     os.makedirs(log_dir, exist_ok=True)

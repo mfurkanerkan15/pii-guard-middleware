@@ -39,7 +39,7 @@ class LLMClient:
     def generate(self, prompt: str) -> str:
         """Verilen prompt'u modele gönderir ve yanıt metnini döner."""
         response = self._model.generate_content(prompt)
-        return response.text
+        return str(response.text)
 
 
 @lru_cache

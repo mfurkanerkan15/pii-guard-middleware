@@ -28,9 +28,9 @@ def process_and_mask_dynamic(text: str, request_id: str = "N/A"):
 
     forward_results = sorted(valid_results, key=lambda x: x.start)
 
-    mapping = {}
-    counters = {}
-    value_to_placeholder = {}
+    mapping: dict[str, str] = {}
+    counters: dict[str, int] = {}
+    value_to_placeholder: dict[str, str] = {}
 
     for res in forward_results:
         original_value = text[res.start : res.end]
