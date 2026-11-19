@@ -1,11 +1,5 @@
-import sys
-import os
-
-# Proje ana dizinini Python yoluna ekler
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import pytest
-from processor import process_and_mask_dynamic, rehydrate_text
+from pii_guard.masking import process_and_mask_dynamic, rehydrate_text
 
 def test_ingress_masking():
     sample_text = "Hello, my name is Furkan Erkan and my email is test@example.com"

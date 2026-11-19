@@ -1,11 +1,5 @@
-import sys
-import os
 import pytest
-
-# Proje ana dizinini Python yoluna ekler
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from dlp_guard import check_for_leaks
+from pii_guard.dlp import check_for_leaks
 
 
 # ==============================================================================
@@ -248,7 +242,7 @@ def test_phone_unrelated_scattered_digits_no_false_alarm():
 def test_dlp_layers_do_not_log_pii_or_hash(caplog):
     """Her DLP katmanında (1, 2, 3, 4) sızıntı olduğunda loglarda ham PII ve Hash geçmediğini doğrular."""
     from unittest.mock import patch
-    import dlp_guard
+    import pii_guard.dlp as dlp_guard
 
     # Katman 1: Doğrudan eşleşme
     with caplog.at_level("WARNING"):
