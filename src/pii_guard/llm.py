@@ -27,8 +27,8 @@ class LLMClient:
         settings = get_settings()
         if not settings.gemini_api_key or not settings.gemini_api_key.get_secret_value().strip():
             raise ValueError(
-                "HATA: GEMINI_API_KEY tanımlı değil veya boş. "
-                ".env dosyasına veya ortam değişkenlerine ekleyin."
+                "GEMINI_API_KEY is not set or empty. "
+                "Add it to your .env file or environment."
             )
         genai.configure(api_key=settings.gemini_api_key.get_secret_value())
         self._model = genai.GenerativeModel(
