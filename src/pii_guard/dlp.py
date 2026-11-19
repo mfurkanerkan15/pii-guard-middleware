@@ -1,8 +1,10 @@
-import re
 import logging
+import re
 import unicodedata
+
 from pii_guard.config import get_settings
 from pii_guard.masking import get_analyzer
+
 
 def fold_text(text: str) -> str:
     """
@@ -15,26 +17,25 @@ def fold_text(text: str) -> str:
     text = unicodedata.normalize("NFKC", text)
     text = text.translate(str.maketrans({"İ": "i", "I": "ı"}))
     text = text.casefold()
-    return text.translate(str.maketrans({
-        "ı": "i",
-        "ş": "s",
-        "ğ": "g",
-        "ü": "u",
-        "ö": "o",
-        "ç": "c"
-    }))
+    return text.translate(
+        str.maketrans({"ı": "i", "ş": "s", "ğ": "g", "ü": "u", "ö": "o", "ç": "c"})
+    )
+
 
 def _normalize_text(text: str) -> str:
     """Metni Türkçe ve Unicode uyumlu katlar ve ardışık boşlukları tek boşluğa indirger."""
-    return re.sub(r'\s+', ' ', fold_text(text)).strip()
+    return re.sub(r"\s+", " ", fold_text(text)).strip()
+
 
 def _extract_digits(text: str) -> str:
     """Metindeki yalnızca rakamları çeker."""
-    return re.sub(r'\D', '', text)
+    return re.sub(r"\D", "", text)
+
 
 def _strip_separators(text: str) -> str:
     """Tüm boşluk ve noktalama işaretlerini kaldırarak sadece harf ve rakamları bırakır."""
-    return re.sub(r'[\W_]+', '', fold_text(text), flags=re.UNICODE)
+    return re.sub(r"[\W_]+", "", fold_text(text), flags=re.UNICODE)
+
 
 def _extract_phone_chunks(text: str) -> list[str]:
     """
@@ -43,18 +44,19 @@ def _extract_phone_chunks(text: str) -> list[str]:
     En az 7 haneli rakam gruplarını filtreleyerek metne dağılmış bağımsız sayıların
     yanlış alarm üretmesini engeller.
     """
-    raw_chunks = re.findall(r'(?:\+?\d[\d\s\-\.\(\)/]{5,}\d|\b\d{7,}\b)', text)
+    raw_chunks = re.findall(r"(?:\+?\d[\d\s\-\.\(\)/]{5,}\d|\b\d{7,}\b)", text)
     cleaned_chunks = []
     for c in raw_chunks:
-        digits = re.sub(r'\D', '', c)
+        digits = re.sub(r"\D", "", c)
         if len(digits) >= 7:
             cleaned_chunks.append(digits)
     return cleaned_chunks
 
+
 def check_for_leaks(
-    text: str, 
-    mapping: dict, 
-    request_id: str = "N/A", 
+    text: str,
+    mapping: dict,
+    request_id: str = "N/A",
     token_min_len: int | None = None,
     dlp_ner_enabled: bool | None = None,
     ner_score_threshold: float | None = None,
@@ -119,10 +121,12 @@ def check_for_leaks(
             core_digits = val_digits[-10:] if len(val_digits) >= 10 else val_digits
             for chunk_digits in phone_chunks:
                 chunk_core = chunk_digits[-10:] if len(chunk_digits) >= 10 else chunk_digits
-                if (core_digits in chunk_digits or 
-                    val_digits in chunk_digits or 
-                    (len(chunk_core) >= 10 and chunk_core in val_digits) or
-                    chunk_digits == core_digits):
+                if (
+                    core_digits in chunk_digits
+                    or val_digits in chunk_digits
+                    or (len(chunk_core) >= 10 and chunk_core in val_digits)
+                    or chunk_digits == core_digits
+                ):
                     logging.warning(
                         f"{request_id} | SIZINTI TESPİT EDİLDİ (Katman 3 - Sayısal / Telefon Formatı) | Placeholder: {placeholder}"
                     )
@@ -130,8 +134,8 @@ def check_for_leaks(
 
         # 4. Katman: Kelime Bazlı / Parçalı İsim Tespiti (Yalnızca PERSON varlıkları için)
         if placeholder.startswith("PERSON"):
-            tokens = [t for t in re.split(r'\s+', val_norm) if len(t) >= token_min_len]
-            if len(re.split(r'\s+', val_norm)) > 1:
+            tokens = [t for t in re.split(r"\s+", val_norm) if len(t) >= token_min_len]
+            if len(re.split(r"\s+", val_norm)) > 1:
                 for token in tokens:
                     pattern = rf"\b{re.escape(token)}\b"
                     if re.search(pattern, text_norm):
@@ -144,19 +148,19 @@ def check_for_leaks(
     if dlp_ner_enabled:
         try:
             results = get_analyzer().analyze(
-                text=text, 
-                entities=["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "LOCATION"], 
-                language='en',
-                score_threshold=ner_score_threshold
+                text=text,
+                entities=["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "LOCATION"],
+                language="en",
+                score_threshold=ner_score_threshold,
             )
-            
+
             for res in results:
-                found_value = text[res.start:res.end].strip()
-                
+                found_value = text[res.start : res.end].strip()
+
                 # Placeholder etiketlerini atla
                 if any(tag in found_value for tag in ["PERSON", "LOCATION", "PHONE", "EMAIL"]):
                     continue
-                    
+
                 logging.info(
                     f"{request_id} | Model çıktısında harici varlık gözlendi (Katman 5 - Telemetri) | Tip: {res.entity_type}"
                 )

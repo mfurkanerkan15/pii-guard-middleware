@@ -28,7 +28,10 @@ def configure_logging(settings) -> None:
     root_logger.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
 
     # Zaten yapılandırılmışsa yeniden ekleme
-    if any(isinstance(h, logging.FileHandler) and "security_audit" in getattr(h, "baseFilename", "") for h in root_logger.handlers):
+    if any(
+        isinstance(h, logging.FileHandler) and "security_audit" in getattr(h, "baseFilename", "")
+        for h in root_logger.handlers
+    ):
         return
 
     file_handler = logging.FileHandler(

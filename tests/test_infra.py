@@ -5,6 +5,7 @@ import sys
 from unittest.mock import patch
 
 import pytest
+
 from pii_guard.config import Settings, get_settings
 from pii_guard.dlp import check_for_leaks
 from pii_guard.llm import LLMClient, get_llm_client
@@ -70,11 +71,7 @@ def test_dlp_ner_disabled_skips_layer_5(monkeypatch):
 
 def test_import_does_not_create_log_directory_or_file(tmp_path):
     """(d) Modül import edildiğinde diske logs klasörü veya log dosyası açılmamalı."""
-    code = (
-        "import pii_guard.masking\n"
-        "import pii_guard.dlp\n"
-        "import pii_guard.api\n"
-    )
+    code = "import pii_guard.masking\nimport pii_guard.dlp\nimport pii_guard.api\n"
     result = subprocess.run(
         [sys.executable, "-c", code],
         cwd=str(tmp_path),
@@ -99,12 +96,14 @@ def test_json_log_output_is_valid_json_and_contains_no_raw_pii(tmp_path):
     request_id = "REQ_JSON_001"
 
     # Güvenlik gereği maskeleme sırasında loglanan mesaj formatı
-    logger.info(f"{request_id} | Giriş maskeleme tamamlandı | Varlık Sayısı: 2 | Tipler: ['EMAIL', 'PERSON']")
+    logger.info(
+        f"{request_id} | Giriş maskeleme tamamlandı | Varlık Sayısı: 2 | Tipler: ['EMAIL', 'PERSON']"
+    )
 
     log_file = tmp_path / "test_logs" / "security_audit.log"
     assert log_file.exists()
 
-    with open(log_file, "r", encoding="utf-8") as f:
+    with open(log_file, encoding="utf-8") as f:
         lines = f.readlines()
 
     assert len(lines) >= 1

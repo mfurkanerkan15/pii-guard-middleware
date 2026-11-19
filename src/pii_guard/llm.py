@@ -27,8 +27,7 @@ class LLMClient:
         settings = get_settings()
         if not settings.gemini_api_key or not settings.gemini_api_key.get_secret_value().strip():
             raise ValueError(
-                "GEMINI_API_KEY is not set or empty. "
-                "Add it to your .env file or environment."
+                "GEMINI_API_KEY is not set or empty. Add it to your .env file or environment."
             )
         genai.configure(api_key=settings.gemini_api_key.get_secret_value())
         self._model = genai.GenerativeModel(

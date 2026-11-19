@@ -1,4 +1,5 @@
 import pytest
+
 from pii_guard.config import get_settings
 from pii_guard.masking import get_analyzer
 

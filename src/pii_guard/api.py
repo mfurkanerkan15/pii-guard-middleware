@@ -1,15 +1,15 @@
-import uuid
 import logging
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Body, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 
 from pii_guard.config import get_settings
-from pii_guard.logging_config import configure_logging
-from pii_guard.masking import process_and_mask_dynamic, rehydrate_text
 from pii_guard.dlp import check_for_leaks
 from pii_guard.llm import get_llm_client
+from pii_guard.logging_config import configure_logging
+from pii_guard.masking import process_and_mask_dynamic, rehydrate_text
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ async def handle_request(user_input: str = Body(..., media_type="text/plain")):
     if check_for_leaks(llm_text, mapping, request_id):
         raise HTTPException(
             status_code=403,
-            detail="Blocked: Güvenlik İhlali: Model çıktısında maskelenmemiş ham hassas veri saptandı!"
+            detail="Blocked: Güvenlik İhlali: Model çıktısında maskelenmemiş ham hassas veri saptandı!",
         )
 
     # 4. Geri Çözme (Unmasking / Rehydration)

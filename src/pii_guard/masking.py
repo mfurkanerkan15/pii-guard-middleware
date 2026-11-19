@@ -1,8 +1,8 @@
-import re
 import logging
+import re
 from functools import lru_cache
-from presidio_analyzer import AnalyzerEngine
 
+from presidio_analyzer import AnalyzerEngine
 
 PLACEHOLDER_PATTERN = re.compile(r"^(PERSON|LOCATION|PHONE_NUMBER|EMAIL_ADDRESS)_\d+$")
 
@@ -18,15 +18,12 @@ def get_analyzer() -> AnalyzerEngine:
 def process_and_mask_dynamic(text: str, request_id: str = "N/A"):
     analyzer = get_analyzer()
     results = analyzer.analyze(
-        text=text,
-        entities=["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "LOCATION"],
-        language='en'
+        text=text, entities=["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "LOCATION"], language="en"
     )
 
     # Prompt içinde önceden yer alan placeholder etiketlerini (PERSON_1 vb.) filtrele
     valid_results = [
-        res for res in results
-        if not PLACEHOLDER_PATTERN.match(text[res.start:res.end].strip())
+        res for res in results if not PLACEHOLDER_PATTERN.match(text[res.start : res.end].strip())
     ]
 
     forward_results = sorted(valid_results, key=lambda x: x.start)
@@ -36,7 +33,7 @@ def process_and_mask_dynamic(text: str, request_id: str = "N/A"):
     value_to_placeholder = {}
 
     for res in forward_results:
-        original_value = text[res.start:res.end]
+        original_value = text[res.start : res.end]
         entity_type = res.entity_type
 
         if original_value not in value_to_placeholder:
@@ -59,7 +56,9 @@ def process_and_mask_dynamic(text: str, request_id: str = "N/A"):
         masked_text = masked_text[:start] + placeholder + masked_text[end:]
 
     entity_types = sorted(list(set(res.entity_type for res in valid_results)))
-    logger.info(f"{request_id} | Giriş maskeleme tamamlandı | Varlık Sayısı: {len(valid_results)} | Tipler: {entity_types}")
+    logger.info(
+        f"{request_id} | Giriş maskeleme tamamlandı | Varlık Sayısı: {len(valid_results)} | Tipler: {entity_types}"
+    )
 
     return masked_text, mapping
 
@@ -74,5 +73,5 @@ def rehydrate_text(text: str, mapping: dict) -> str:
         return text
 
     sorted_placeholders = sorted(mapping.keys(), key=len, reverse=True)
-    pattern = re.compile(r'\b(' + '|'.join(re.escape(p) for p in sorted_placeholders) + r')\b')
+    pattern = re.compile(r"\b(" + "|".join(re.escape(p) for p in sorted_placeholders) + r")\b")
     return pattern.sub(lambda m: mapping.get(m.group(0), m.group(0)), text)

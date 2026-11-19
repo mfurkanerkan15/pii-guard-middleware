@@ -1,11 +1,12 @@
 import uuid
 from unittest.mock import MagicMock
-from fastapi import HTTPException
+
 import pytest
+from fastapi import HTTPException
 
 import pii_guard.api as api_module
-import pii_guard.llm as llm_module
 from pii_guard.api import handle_request
+
 
 # TODO (v0.4.0): Async event loop ve HTTP entegrasyonu conftest.py ve TestClient üzerinden koordine edilecek.
 def _run_coroutine(coro):
@@ -15,13 +16,18 @@ def _run_coroutine(coro):
     except StopIteration as e:
         return e.value
 
+
 def test_leak_raises_http_exception_403(monkeypatch):
     """Model çıktısında PII sızıntısı olduğunda HTTPException(status_code=403) fırlatılmalı."""
     mock_client = MagicMock()
     mock_client.generate.return_value = "Sızdırılan model çıktısı"
     monkeypatch.setattr(api_module, "get_llm_client", lambda: mock_client)
 
-    monkeypatch.setattr(api_module, "process_and_mask_dynamic", lambda text, req_id: ("PERSON_1", {"PERSON_1": "Test User"}))
+    monkeypatch.setattr(
+        api_module,
+        "process_and_mask_dynamic",
+        lambda text, req_id: ("PERSON_1", {"PERSON_1": "Test User"}),
+    )
     monkeypatch.setattr(api_module, "check_for_leaks", lambda text, mapping, req_id: True)
 
     with pytest.raises(HTTPException) as exc_info:
@@ -29,6 +35,7 @@ def test_leak_raises_http_exception_403(monkeypatch):
 
     assert exc_info.value.status_code == 403
     assert "Blocked" in exc_info.value.detail
+
 
 def test_request_id_is_uuid(monkeypatch):
     """Her istekte sabit req_123 yerine rastgele ve geçerli bir UUID4 üretilmeli."""
@@ -85,7 +92,9 @@ def test_api_real_pipeline_rehydration_success_ten_plus_entities(monkeypatch):
 
     # Model sadece placeholder içeren temiz yanıt döndürsün
     mock_client = MagicMock()
-    mock_client.generate.return_value = "Attending: PERSON_1 and PERSON_10 will lead the discussion."
+    mock_client.generate.return_value = (
+        "Attending: PERSON_1 and PERSON_10 will lead the discussion."
+    )
     monkeypatch.setattr(api_module, "get_llm_client", lambda: mock_client)
 
     response = _run_coroutine(handle_request(user_input=names_prompt))

@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Optional
+
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     )
 
     # Öneksiz GEMINI_API_KEY
-    gemini_api_key: Optional[SecretStr] = Field(
+    gemini_api_key: SecretStr | None = Field(
         default=None,
         validation_alias="GEMINI_API_KEY",
     )
