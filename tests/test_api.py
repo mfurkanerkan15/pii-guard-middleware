@@ -4,9 +4,10 @@ from fastapi import HTTPException
 import pytest
 
 import pii_guard.api as api_module
+import pii_guard.llm as llm_module
 from pii_guard.api import handle_request
 
-# TODO (v0.3.0): Async event loop ve HTTP entegrasyonu conftest.py ve TestClient üzerinden koordine edilecek.
+# TODO (v0.4.0): Async event loop ve HTTP entegrasyonu conftest.py ve TestClient üzerinden koordine edilecek.
 def _run_coroutine(coro):
     """Event loop gerektirmeyen coroutine'leri doğrudan senkron yürütür."""
     try:
@@ -16,10 +17,10 @@ def _run_coroutine(coro):
 
 def test_leak_raises_http_exception_403(monkeypatch):
     """Model çıktısında PII sızıntısı olduğunda HTTPException(status_code=403) fırlatılmalı."""
-    mock_genai = MagicMock()
-    mock_genai.GenerativeModel.return_value.generate_content.return_value = MagicMock(text="Sızdırılan model çıktısı")
-    monkeypatch.setattr(api_module, "genai", mock_genai)
-    
+    mock_client = MagicMock()
+    mock_client.generate.return_value = "Sızdırılan model çıktısı"
+    monkeypatch.setattr(api_module, "get_llm_client", lambda: mock_client)
+
     monkeypatch.setattr(api_module, "process_and_mask_dynamic", lambda text, req_id: ("PERSON_1", {"PERSON_1": "Test User"}))
     monkeypatch.setattr(api_module, "check_for_leaks", lambda text, mapping, req_id: True)
 
@@ -40,9 +41,9 @@ def test_request_id_is_uuid(monkeypatch):
     monkeypatch.setattr(api_module, "process_and_mask_dynamic", mock_process_and_mask)
     monkeypatch.setattr(api_module, "check_for_leaks", lambda text, mapping, req_id: False)
 
-    mock_genai = MagicMock()
-    mock_genai.GenerativeModel.return_value.generate_content.return_value = MagicMock(text="Cevap metni.")
-    monkeypatch.setattr(api_module, "genai", mock_genai)
+    mock_client = MagicMock()
+    mock_client.generate.return_value = "Cevap metni."
+    monkeypatch.setattr(api_module, "get_llm_client", lambda: mock_client)
 
     response = _run_coroutine(handle_request(user_input="Normal prompt"))
     assert "ZERO-TRUST" in response
@@ -59,12 +60,10 @@ def test_api_real_pipeline_leak_blocks_and_hides_raw_value(monkeypatch):
     raw_name = "Furkan Erkan"
     user_prompt = f"Merhaba, benim adım {raw_name}"
 
-    # Sadece genai mock'lanır; check_for_leaks ve rehydrate_text GERÇEKTİR
-    mock_genai = MagicMock()
-    mock_genai.GenerativeModel.return_value.generate_content.return_value = MagicMock(
-        text=f"Model sızıntı yaptı: {raw_name} sisteme eklendi."
-    )
-    monkeypatch.setattr(api_module, "genai", mock_genai)
+    # Sadece LLM mock'lanır; check_for_leaks ve rehydrate_text GERÇEKTİR
+    mock_client = MagicMock()
+    mock_client.generate.return_value = f"Model sızıntı yaptı: {raw_name} sisteme eklendi."
+    monkeypatch.setattr(api_module, "get_llm_client", lambda: mock_client)
 
     with pytest.raises(HTTPException) as exc_info:
         _run_coroutine(handle_request(user_input=user_prompt))
@@ -85,11 +84,9 @@ def test_api_real_pipeline_rehydration_success_ten_plus_entities(monkeypatch):
     )
 
     # Model sadece placeholder içeren temiz yanıt döndürsün
-    mock_genai = MagicMock()
-    mock_genai.GenerativeModel.return_value.generate_content.return_value = MagicMock(
-        text="Attending: PERSON_1 and PERSON_10 will lead the discussion."
-    )
-    monkeypatch.setattr(api_module, "genai", mock_genai)
+    mock_client = MagicMock()
+    mock_client.generate.return_value = "Attending: PERSON_1 and PERSON_10 will lead the discussion."
+    monkeypatch.setattr(api_module, "get_llm_client", lambda: mock_client)
 
     response = _run_coroutine(handle_request(user_input=names_prompt))
     assert "ZERO-TRUST" in response

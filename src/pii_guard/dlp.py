@@ -2,7 +2,7 @@ import re
 import logging
 import unicodedata
 from pii_guard.config import get_settings
-from pii_guard.masking import analyzer
+from pii_guard.masking import get_analyzer
 
 def fold_text(text: str) -> str:
     """
@@ -143,7 +143,7 @@ def check_for_leaks(
     # 5. Katman: Telemetri & Bilgi Amaçlı Varlık Analizi (Bloklama yapmaz)
     if dlp_ner_enabled:
         try:
-            results = analyzer.analyze(
+            results = get_analyzer().analyze(
                 text=text, 
                 entities=["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "LOCATION"], 
                 language='en',

@@ -241,8 +241,8 @@ def test_phone_unrelated_scattered_digits_no_false_alarm():
 
 def test_dlp_layers_do_not_log_pii_or_hash(caplog):
     """Her DLP katmanında (1, 2, 3, 4) sızıntı olduğunda loglarda ham PII ve Hash geçmediğini doğrular."""
-    from unittest.mock import patch
-    import pii_guard.dlp as dlp_guard
+    from unittest.mock import patch, MagicMock
+    import pii_guard.masking as masking_module
 
     # Katman 1: Doğrudan eşleşme
     with caplog.at_level("WARNING"):
@@ -278,7 +278,8 @@ def test_dlp_layers_do_not_log_pii_or_hash(caplog):
     # Katman 5 hata loglama: sadece hata sınıfı tipi loglanmalı, exception mesaj detayı değil
     with caplog.at_level("ERROR"):
         caplog.clear()
-        with patch.object(dlp_guard.analyzer, "analyze", side_effect=RuntimeError("very_secret_error_detail")):
+        with patch("pii_guard.dlp.get_analyzer") as mock_get_analyzer:
+            mock_get_analyzer.return_value.analyze.side_effect = RuntimeError("very_secret_error_detail")
             check_for_leaks("Metin", {"PERSON_1": "Ahmet"})
         assert "RuntimeError" in caplog.text
         assert "very_secret_error_detail" not in caplog.text

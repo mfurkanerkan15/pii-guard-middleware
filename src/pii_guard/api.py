@@ -1,24 +1,32 @@
-import os
 import uuid
-import google.generativeai as genai
-from dotenv import load_dotenv
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Body, HTTPException
 from fastapi.responses import PlainTextResponse
+
+from pii_guard.config import get_settings
+from pii_guard.logging_config import configure_logging
 from pii_guard.masking import process_and_mask_dynamic, rehydrate_text
 from pii_guard.dlp import check_for_leaks
+from pii_guard.llm import get_llm_client
+
+logger = logging.getLogger(__name__)
 
 
-load_dotenv()
+@asynccontextmanager
+async def lifespan(application: FastAPI):  # noqa: ARG001
+    """Uygulama başlangıcında loglama yapılandırılır."""
+    configure_logging(get_settings())
+    logger.info("PII Guard Middleware başlatıldı")
+    yield
 
-api_key = os.getenv("GEMINI_API_KEY")
 
-if not api_key:
-    raise ValueError("HATA: .env dosyasında 'GEMINI_API_KEY' bulunamadı!")
+app = FastAPI(title="Zero-Trust LLM Veri Güvenliği Katmanı", lifespan=lifespan)
 
-genai.configure(api_key=api_key)
 
-app = FastAPI(title="Zero-Trust LLM Veri Güvenliği Katmanı")
-
+# TODO (v0.4.0): Async event loop ve HTTP entegrasyonu — _run_coroutine / send(None)
+# yaklaşımı TestClient ile değiştirilecek.
 @app.post("/process", response_class=PlainTextResponse)
 async def handle_request(user_input: str = Body(..., media_type="text/plain")):
     request_id = str(uuid.uuid4())
@@ -26,31 +34,20 @@ async def handle_request(user_input: str = Body(..., media_type="text/plain")):
     # 1. Giriş Güvenliği: Dinamik Maskeleme yapılıyor
     masked_text, mapping = process_and_mask_dynamic(user_input, request_id)
 
-    # 2. LLM Ayarları ve İngilizce Sistem Talimatı
-    model = genai.GenerativeModel(
-        model_name='gemini-2.5-flash',
-        system_instruction=(
-            "You are an assistant working behind a secure proxy. "
-            "You will see placeholders like PERSON_1, PERSON_2 in the input text. "
-            "DO NOT transform, translate, or change these placeholders into real names or values. "
-            "Keep them EXACTLY as they are in your response, and treat them as if they are the actual names."
-        )
-    )
-    
-    # Modele maskelenmiş metni gönderiyoruz
-    response = model.generate_content(masked_text)
-    llm_text = response.text
-    
+    # 2. LLM çağrısı (sarmalayıcı üzerinden)
+    llm_client = get_llm_client()
+    llm_text = llm_client.generate(masked_text)
+
     # 3. Çıkış Güvenliği
     if check_for_leaks(llm_text, mapping, request_id):
         raise HTTPException(
             status_code=403,
             detail="Blocked: Güvenlik İhlali: Model çıktısında maskelenmemiş ham hassas veri saptandı!"
         )
-    
+
     # 4. Geri Çözme (Unmasking / Rehydration)
     final_clean_response = rehydrate_text(llm_text, mapping)
-    
+
     # 5. KARŞILAŞTIRMALI VE METİN FORMATI
     report = (
         "======================================================================\n"
@@ -70,5 +67,5 @@ async def handle_request(user_input: str = Body(..., media_type="text/plain")):
         f"{final_clean_response}\n"
         "======================================================================\n"
     )
-    
+
     return report
