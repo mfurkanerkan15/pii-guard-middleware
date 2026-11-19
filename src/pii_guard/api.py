@@ -4,8 +4,8 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 from fastapi import FastAPI, Body, HTTPException
 from fastapi.responses import PlainTextResponse
-from processor import process_and_mask_dynamic, rehydrate_text
-from dlp_guard import check_for_leaks
+from pii_guard.masking import process_and_mask_dynamic, rehydrate_text
+from pii_guard.dlp import check_for_leaks
 
 
 load_dotenv()

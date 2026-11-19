@@ -1,7 +1,7 @@
 import re
 import logging
 import unicodedata
-from processor import analyzer
+from pii_guard.masking import analyzer
 
 def fold_text(text: str) -> str:
     """
