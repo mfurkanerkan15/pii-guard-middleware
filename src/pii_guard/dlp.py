@@ -1,6 +1,7 @@
 import re
 import logging
 import unicodedata
+from pii_guard.config import get_settings
 from pii_guard.masking import analyzer
 
 def fold_text(text: str) -> str:
@@ -54,7 +55,9 @@ def check_for_leaks(
     text: str, 
     mapping: dict, 
     request_id: str = "N/A", 
-    token_min_len: int = 4
+    token_min_len: int | None = None,
+    dlp_ner_enabled: bool | None = None,
+    ner_score_threshold: float | None = None,
 ) -> bool:
     """
     Zero-Trust DLP Çıkış Denetleyicisi (Production-Grade):
@@ -70,6 +73,14 @@ def check_for_leaks(
     """
     if not text or not mapping:
         return False
+
+    settings = get_settings()
+    if token_min_len is None:
+        token_min_len = settings.token_min_len
+    if dlp_ner_enabled is None:
+        dlp_ner_enabled = settings.dlp_ner_enabled
+    if ner_score_threshold is None:
+        ner_score_threshold = settings.ner_score_threshold
 
     text_norm = _normalize_text(text)
     text_clean = _strip_separators(text)
@@ -130,25 +141,26 @@ def check_for_leaks(
                         return True
 
     # 5. Katman: Telemetri & Bilgi Amaçlı Varlık Analizi (Bloklama yapmaz)
-    try:
-        results = analyzer.analyze(
-            text=text, 
-            entities=["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "LOCATION"], 
-            language='en',
-            score_threshold=0.6
-        )
-        
-        for res in results:
-            found_value = text[res.start:res.end].strip()
-            
-            # Placeholder etiketlerini atla
-            if any(tag in found_value for tag in ["PERSON", "LOCATION", "PHONE", "EMAIL"]):
-                continue
-                
-            logging.info(
-                f"{request_id} | Model çıktısında harici varlık gözlendi (Katman 5 - Telemetri) | Tip: {res.entity_type}"
+    if dlp_ner_enabled:
+        try:
+            results = analyzer.analyze(
+                text=text, 
+                entities=["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "LOCATION"], 
+                language='en',
+                score_threshold=ner_score_threshold
             )
-    except Exception as e:
-        logging.error(f"{request_id} | DLP analiz sırasında hata oluştu: {type(e).__name__}")
+            
+            for res in results:
+                found_value = text[res.start:res.end].strip()
+                
+                # Placeholder etiketlerini atla
+                if any(tag in found_value for tag in ["PERSON", "LOCATION", "PHONE", "EMAIL"]):
+                    continue
+                    
+                logging.info(
+                    f"{request_id} | Model çıktısında harici varlık gözlendi (Katman 5 - Telemetri) | Tip: {res.entity_type}"
+                )
+        except Exception as e:
+            logging.error(f"{request_id} | DLP analiz sırasında hata oluştu: {type(e).__name__}")
 
     return False
