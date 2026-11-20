@@ -84,7 +84,7 @@ def test_import_does_not_create_log_directory_or_file(tmp_path):
 
 
 def test_json_log_output_is_valid_json_and_contains_no_raw_pii(tmp_path):
-    """(e) JSON log çıktısı geçerli JSON olmalı ve ham PII içermemeli."""
+    """(e) JSON log çıktısı geçerli JSON olmalı, request_id doğru doldurulmalı ve ham PII içermemeli."""
     test_log_dir = str(tmp_path / "test_logs")
     dummy_settings = Settings(log_dir=test_log_dir, log_level="INFO")
 
@@ -112,5 +112,48 @@ def test_json_log_output_is_valid_json_and_contains_no_raw_pii(tmp_path):
     assert "timestamp" in last_log
     assert "level" in last_log
     assert "message" in last_log
+    assert last_log["request_id"] == request_id
     assert raw_name not in last_log["message"]
     assert raw_email not in last_log["message"]
+
+
+def test_configure_logging_is_idempotent(tmp_path):
+    """configure_logging birden fazla kez çağrıldığında mükerrer handler veya çift log satırı üretmemeli."""
+    test_log_dir = str(tmp_path / "idempotent_logs")
+    dummy_settings = Settings(log_dir=test_log_dir, log_level="INFO")
+
+    configure_logging(dummy_settings)
+    configure_logging(dummy_settings)
+
+    logger = logging.getLogger("pii_guard.idempotent_test")
+    logger.info("REQ_IDEMP_001 | Tek satır mesajı")
+
+    log_file = tmp_path / "idempotent_logs" / "security_audit.log"
+    with open(log_file, encoding="utf-8") as f:
+        lines = f.readlines()
+
+    assert len(lines) == 1
+    record = json.loads(lines[0].strip())
+    assert record["request_id"] == "REQ_IDEMP_001"
+
+
+def test_traceback_exception_logging_does_not_leak_pii(tmp_path):
+    """Exception durumunda loglanan traceback veya exception kaydı ham PII veya gizli değer sızdırmamalı."""
+    test_log_dir = str(tmp_path / "exc_logs")
+    dummy_settings = Settings(log_dir=test_log_dir, log_level="ERROR")
+
+    configure_logging(dummy_settings)
+    logger = logging.getLogger("pii_guard.exc_test")
+
+    raw_secret = "VerySecretPII_Data_12345"
+    try:
+        raise RuntimeError("İç işlem hatası: ServiceUnavailable")
+    except Exception:
+        logger.error("REQ_ERR_001 | Hata oluştu: RuntimeError", exc_info=True)
+
+    log_file = tmp_path / "exc_logs" / "security_audit.log"
+    with open(log_file, encoding="utf-8") as f:
+        content = f.read()
+
+    assert "RuntimeError" in content
+    assert raw_secret not in content
